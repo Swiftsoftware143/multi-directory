@@ -583,6 +583,7 @@
         <a href="#audience-section">👥 Audience Lists</a>
         <a href="#demand-analytics-section">📈 Demand Analytics</a>
         <a href="#calls-section">📞 Calls</a>
+        <a href="#directory-events-section">⚙️ Directory Events</a>
         <a href="#entity-export-section">📦 Complete Export</a>
         <a href="#entity-sync-section">🔗 CoreSwift Sync</a>
         <a href="#coreswift-connection-section">🔌 CoreSwift Connection</a>
@@ -1324,6 +1325,27 @@
         <div style="font-weight:600;font-size:.9rem;margin:14px 0 6px">Tracking numbers</div>
         <div id="cl-numbers"></div>
         <div class="feature-status" id="cl-status"></div>
+      </div>
+
+      <!-- ⚙️ Directory Events (n8n bridge) — GET /directory-events, GET /directory-events/unprocessed,
+           POST /directory-events/:id/process. Live backend, no caller outside the raw /admin-ops
+           explorer (fleet feature-reachability audit). Operator-only: see the outbound event queue
+           and mark an event processed once n8n has handled it. -->
+      <div class="feature-card" id="directory-events-section">
+        <h3>⚙️ Directory Events
+          <span class="pk-badge pk-missing" id="de-badge" style="float:right">loading…</span>
+        </h3>
+        <p class="feature-subtitle">The outbound event queue that feeds the n8n automation bridge. Each row is one event a directory emitted; <b>Mark processed</b> records that it was handled (idempotent, per event).</p>
+        <div class="pk-controls" style="flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <label style="font-size:.75rem;display:flex;flex-direction:column;gap:3px;min-width:150px">Show
+            <select class="pk-input" id="de-filter" onchange="window.__deLoad()">
+              <option value="">Recent events</option>
+              <option value="unprocessed">Unprocessed only</option>
+            </select></label>
+          <button class="btn btn-ghost btn-sm" style="align-self:flex-end" onclick="window.__deLoad()">↻ Refresh</button>
+        </div>
+        <div id="de-list"></div>
+        <div class="feature-status" id="de-status"></div>
       </div>
 
       <!-- 📄 Legal Pages — GET|POST /zaarhub/admin/legal, GET|DELETE /zaarhub/admin/legal/:slug.
@@ -14346,6 +14368,16 @@
         });
       });
     }
+    function post(path, body) {
+      var h = { 'Content-Type': 'application/json' }; var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { method: 'POST', headers: h, body: body ? JSON.stringify(body) : '{}' }).then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
     function status(msg) { var el = document.getElementById('cl-status'); if (el) el.textContent = msg || ''; }
     function sel() { var el = document.getElementById('cl-directory'); return el ? el.value : ''; }
     function dur(sec) {
@@ -14434,21 +14466,34 @@
     function renderNumbers() {
       var el = document.getElementById('cl-numbers'); if (!el) return;
       var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem">' +
-        '<thead><tr><th>Number</th><th>Name</th><th>Provider</th><th>Forwards to</th><th>Logging</th><th>Status</th></tr></thead><tbody>';
+        '<thead><tr><th>Number</th><th>Name</th><th>Provider</th><th>Forwards to</th><th>Logging</th><th>Status</th><th></th></tr></thead><tbody>';
       if (!NUMS.length) {
-        html += '<tr><td colspan="6" style="opacity:.6">No tracking numbers' + (sel() ? ' in this directory' : '') + '.</td></tr>';
+        html += '<tr><td colspan="7" style="opacity:.6">No tracking numbers' + (sel() ? ' in this directory' : '') + '.</td></tr>';
       }
       NUMS.forEach(function (n) {
+        var prov = '';
+        if (n.status !== 'provisioned') {
+          prov = '<button class="btn btn-ghost btn-sm" onclick="window.__clProvision(\'' + esc(n.id) + '\')">Provision</button>';
+        }
         html += '<tr><td><b>' + esc(n.phone_number) + '</b></td><td>' + esc(n.friendly_name || '—') + '</td>' +
           '<td>' + esc(n.provider || '—') + '</td><td>' + esc(n.forwarding_number || '—') + '</td>' +
-          '<td>' + (n.call_logging ? 'on' : 'off') + '</td><td>' + esc(n.status || '') + '</td></tr>';
+          '<td>' + (n.call_logging ? 'on' : 'off') + '</td><td>' + esc(n.status || '') + '</td><td>' + prov + '</td></tr>';
       });
       html += '</tbody></table>';
       el.innerHTML = html;
     }
 
+    function provision(id) {
+      status('Provisioning…');
+      post('/phone-numbers/' + encodeURIComponent(id) + '/provision').then(function (r) {
+        status('Number ' + (r && r.phone_number ? r.phone_number : '') + ' provisioned.');
+        load();
+      }).catch(function (e) { status('Provision failed: ' + e.message); });
+    }
+
     window.__clLoad = load;
     window.__clRender = render;
+    window.__clProvision = provision;
     var inited = false;
     function init() {
       if (inited || !document.getElementById('calls-section')) return;
@@ -14465,6 +14510,91 @@
         } catch (err) {}
       });
       loadDirs();
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 400);
+  })();
+  </script>
+  <!-- ===== Directory Events (n8n bridge) — GET /directory-events, GET /directory-events/unprocessed,
+       POST /directory-events/:id/process =====
+       Operator-only console control (fleet feature-reachability audit): the outbound event queue
+       feeds n8n; mark an event processed once handled. Own token read, own fetch wrapper. -->
+  <script>
+  (function () {
+    var API = '/api/v1';
+    function tok() { try { return localStorage.getItem('md_admin_token'); } catch (e) { return null; } }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function req(path) {
+      var h = {}; var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { headers: h }).then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function post(path) {
+      var h = { 'Content-Type': 'application/json' }; var t = tok(); if (t) h['Authorization'] = 'Bearer ' + t;
+      return fetch(API + path, { method: 'POST', headers: h }).then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (e) {}
+          if (!r.ok) throw new Error((d && d.message) || ('HTTP ' + r.status));
+          return d;
+        });
+      });
+    }
+    function status(msg) { var el = document.getElementById('de-status'); if (el) el.textContent = msg || ''; }
+    function ts(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : ''; }
+    function load() {
+      if (!document.getElementById('de-list')) return;
+      var f = document.getElementById('de-filter');
+      var path = (f && f.value === 'unprocessed') ? '/directory-events/unprocessed' : '/directory-events?limit=200';
+      status('Loading…');
+      req(path).then(function (r) {
+        var ev = Array.isArray(r) ? r : (r && Array.isArray(r.events) ? r.events : []);
+        render(ev);
+        var badge = document.getElementById('de-badge');
+        if (badge) {
+          badge.textContent = ev.length + ' event' + (ev.length === 1 ? '' : 's');
+          badge.className = 'pk-badge ' + (ev.length ? 'pk-ok' : 'pk-missing');
+        }
+        status('');
+      }).catch(function (e) { status('Failed: ' + e.message); });
+    }
+    function render(ev) {
+      var el = document.getElementById('de-list'); if (!el) return;
+      var html = '<table class="pk-table" style="width:100%;border-collapse:collapse;font-size:.8rem">' +
+        '<thead><tr><th>When</th><th>Event</th><th>Entity</th><th>Processed</th><th>n8n</th><th></th></tr></thead><tbody>';
+      if (!ev.length) {
+        html += '<tr><td colspan="6" style="opacity:.6">No events.</td></tr>';
+      }
+      ev.forEach(function (e) {
+        var done = e.processed === true || e.processed === 'true';
+        var act = done ? '' : '<button class="btn btn-ghost btn-sm" onclick="window.__deProcess(\'' + esc(e.id) + '\')">Mark processed</button>';
+        html += '<tr><td>' + esc(ts(e.created_at)) + '</td><td>' + esc(e.event_type || '—') + '</td>' +
+          '<td>' + esc(e.entity_type || '') + '</td><td>' + (done ? '✓' : '—') + '</td>' +
+          '<td>' + (e.n8n_webhook_sent ? 'sent' : (e.n8n_webhook_failed ? 'failed' : '—')) + '</td><td>' + act + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+    function process(id) {
+      status('Marking…');
+      post('/directory-events/' + encodeURIComponent(id) + '/process').then(function () {
+        status('Marked processed.'); load();
+      }).catch(function (e) { status('Failed: ' + e.message); });
+    }
+    window.__deLoad = load;
+    window.__deProcess = process;
+    var inited = false;
+    function init() {
+      if (inited || !document.getElementById('directory-events-section')) return;
+      inited = true; load();
     }
     document.addEventListener('DOMContentLoaded', init);
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(init, 400);
