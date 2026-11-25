@@ -30,6 +30,11 @@ pub struct ServicePrice {
     pub price_one_time: Option<rust_decimal::Decimal>,
     pub currency: String,
     pub is_active: bool,
+    /// Embeddable checkout for the MONTHLY price (work-queue "MONETIZATION CHECKOUT EMBED"):
+    /// iframe URL or embed snippet rendered inline on the purchase screen. NULL = none.
+    pub checkout_embed_monthly: Option<String>,
+    /// Embeddable checkout for the YEARLY price. NULL = none.
+    pub checkout_embed_yearly: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -86,6 +91,10 @@ pub struct UpdateServicePriceRequest {
     pub is_active: Option<bool>,
     pub directory_id: Option<Uuid>,
     pub network_id: Option<Uuid>,
+    /// Embeddable checkout (monthly/yearly). Empty/whitespace string CLEARS it; omitting the field
+    /// leaves it untouched.
+    pub checkout_embed_monthly: Option<String>,
+    pub checkout_embed_yearly: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -200,6 +209,12 @@ pub async fn update_service_price(
                price_yearly = COALESCE($5, price_yearly),
                price_one_time = COALESCE($6, price_one_time),
                is_active = COALESCE($7, is_active),
+               checkout_embed_monthly = CASE WHEN $8 IS NULL THEN checkout_embed_monthly
+                                             WHEN btrim($8) = '' THEN NULL
+                                             ELSE btrim($8) END,
+               checkout_embed_yearly = CASE WHEN $9 IS NULL THEN checkout_embed_yearly
+                                            WHEN btrim($9) = '' THEN NULL
+                                            ELSE btrim($9) END,
                updated_at = NOW()
            WHERE service_key = $3
              AND directory_id IS NOT DISTINCT FROM $1
@@ -213,14 +228,16 @@ pub async fn update_service_price(
     .bind(req.price_yearly)
     .bind(req.price_one_time)
     .bind(req.is_active)
+    .bind(&req.checkout_embed_monthly)
+    .bind(&req.checkout_embed_yearly)
     .fetch_optional(&s.db)
     .await?;
 
     let result = match updated {
         Some(row) => row,
         None => sqlx::query_as::<_, ServicePrice>(
-            r#"INSERT INTO service_prices (directory_id, network_id, service_key, price_monthly, price_yearly, price_one_time, is_active)
-               VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, true))
+            r#"INSERT INTO service_prices (directory_id, network_id, service_key, price_monthly, price_yearly, price_one_time, is_active, checkout_embed_monthly, checkout_embed_yearly)
+               VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, true), NULLIF(btrim($8), ''), NULLIF(btrim($9), ''))
                RETURNING *"#,
         )
         .bind(dir_id)
@@ -230,6 +247,8 @@ pub async fn update_service_price(
         .bind(req.price_yearly)
         .bind(req.price_one_time)
         .bind(req.is_active)
+        .bind(&req.checkout_embed_monthly)
+        .bind(&req.checkout_embed_yearly)
         .fetch_one(&s.db)
         .await?,
     };

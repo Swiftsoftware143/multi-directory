@@ -184,11 +184,11 @@
         <thead>
           <tr>
             <th>Service key</th><th>Monthly</th><th>Yearly</th><th>One-time</th>
-            <th>Currency</th><th>Active</th><th>Scope</th><th>Updated (UTC)</th><th>Actions</th>
+            <th>Currency</th><th>Active</th><th>Scope</th><th>Checkout embeds</th><th>Updated (UTC)</th><th>Actions</th>
           </tr>
         </thead>
         <tbody id="services-body">
-          <tr><td colspan="9" class="empty">Not loaded yet.</td></tr>
+          <tr><td colspan="10" class="empty">Not loaded yet.</td></tr>
         </tbody>
       </table>
     </div>
@@ -459,7 +459,7 @@
   function renderServices() {
     var tb = el('services-body');
     if (!services.length) {
-      tb.innerHTML = '<tr><td colspan="9" class="empty">No service price rows returned for the current scope.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="10" class="empty">No service price rows returned for the current scope.</td></tr>';
       return;
     }
     tb.innerHTML = services.map(function (s, i) {
@@ -473,6 +473,8 @@
           '<td><select id="edit-active"><option value="true"' + (s.is_active ? ' selected' : '') + '>true</option><option value="false"' + (s.is_active ? '' : ' selected') + '>false</option></select></td>' +
           '<td><input type="text" id="edit-directory" value="' + attr(s.directory_id) + '" placeholder="directory_id (blank = global)">' +
           '<input type="text" id="edit-network" value="' + attr(s.network_id) + '" placeholder="network_id" style="margin-top:4px"></td>' +
+          '<td><input type="text" id="edit-embed-monthly" value="' + attr(s.checkout_embed_monthly) + '" placeholder="monthly embed (blank = none)">' +
+          '<input type="text" id="edit-embed-yearly" value="' + attr(s.checkout_embed_yearly) + '" placeholder="yearly embed (blank = none)" style="margin-top:4px"></td>' +
           '<td class="muted">' + esc(s.updated_at) + '</td>' +
           '<td><div class="row-actions">' +
             '<button class="btn btn-accent btn-sm" type="button" onclick="window.__pricing.saveService(' + i + ')">Save</button>' +
@@ -488,6 +490,7 @@
         '<td class="muted">' + esc(s.currency) + '</td>' +
         '<td><span class="badge ' + (s.is_active ? 'badge-active">active' : 'badge-inactive">inactive') + '</span></td>' +
         '<td class="muted">' + (s.directory_id ? 'dir ' + esc(String(s.directory_id).slice(0, 8)) : (s.network_id ? 'net ' + esc(String(s.network_id).slice(0, 8)) : 'global')) + '</td>' +
+        '<td class="muted">' + (s.checkout_embed_monthly ? 'm:' + esc(String(s.checkout_embed_monthly).slice(0, 18)) : '—') + (s.checkout_embed_yearly ? '<br>y:' + esc(String(s.checkout_embed_yearly).slice(0, 18)) : '') + '</td>' +
         '<td class="muted mono">' + esc(s.updated_at) + '</td>' +
         '<td><button class="btn btn-ghost btn-sm" type="button" onclick="window.__pricing.startEdit(\'' + esc(String(s.service_key).replace(/'/g, "")) + '\')">Edit</button></td>' +
       '</tr>';
@@ -515,7 +518,9 @@
       price_one_time: dec(el('edit-onetime').value),
       is_active: el('edit-active').value === 'true',
       directory_id: dec(el('edit-directory').value),
-      network_id: dec(el('edit-network').value)
+      network_id: dec(el('edit-network').value),
+      checkout_embed_monthly: (el('edit-embed-monthly').value || '').trim() || null,
+      checkout_embed_yearly: (el('edit-embed-yearly').value || '').trim() || null
     };
     var path = '/pricing/services/' + encodeURIComponent(s.service_key);
     setMsg('services-msg', 'info', 'Saving <span class="mono">' + esc(s.service_key) + '</span> via PUT ' + path + ' &hellip;');
