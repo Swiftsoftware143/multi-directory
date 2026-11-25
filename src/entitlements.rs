@@ -269,3 +269,110 @@ pub async fn require_photo_slot(
     .unwrap_or(0);
     limits.require_photos(current, adding)
 }
+
+// ── Satellite cities (work-queue t_5306e167) ─────────────────────────────────────────────
+// A PAID business appears in its home city PLUS its satellite cities. The appearance is a SEPARATE
+// row in `business_placements` (business_id + directory_id) — never a duplicate `businesses` row —
+// so reviews/photos/rating stay on the one business record and COUNT(businesses) never changes.
+//
+// Scope is `directories.region`: same region = satellite cities. Featured is region-scoped (home +
+// same-region satellites, capped by max_listings); Premium is network-wide (home + every other
+// city). The home city is implicit (businesses.directory_id) and is never written here; only
+// SATELLITE (non-home) placements are materialised. Lapsing a subscription deletes these rows and
+// the home listing remains.
+//
+// `sync_placements` is deterministic (slug order) and idempotent (delete-then-insert on a unique
+// (business_id, directory_id)), so it can be called after any subscription create/update/delete.
+
+/// Recompute and persist a business's satellite-city placements from its ACTIVE subscription.
+/// No active subscription (or no `max_listings` headroom) removes every placement row.
+pub async fn sync_placements(db: &PgPool, business_id: Uuid) -> Result<(), sqlx::Error> {
+    // Home directory id (region is resolved inside the satellite queries below).
+    let home_dir_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT d.id FROM businesses b JOIN directories d ON d.id = b.directory_id WHERE b.id = $1",
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await?;
+
+    let Some(home_dir_id) = home_dir_id else {
+        sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
+            .bind(business_id)
+            .execute(db)
+            .await?;
+        return Ok(());
+    };
+
+    // Active subscription tier's max_listings (NULL -> 1 = free, no satellites).
+    let max_listings: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(pt.max_listings, 1) FROM business_subscriptions bs \
+           JOIN plan_tiers pt ON pt.id = bs.tier_id \
+          WHERE bs.business_id = $1 AND bs.status = 'active' \
+            AND (bs.end_date IS NULL OR bs.end_date >= CURRENT_DATE) \
+          ORDER BY bs.created_at DESC LIMIT 1",
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await?
+    .unwrap_or(1);
+
+    // Satellite cap = max_listings - 1 (home city is the 1). 0 or less = no satellites.
+    let cap = (max_listings - 1).max(0) as i64;
+    if cap == 0 {
+        sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
+            .bind(business_id)
+            .execute(db)
+            .await?;
+        return Ok(());
+    }
+
+    // Featured (region-scoped) vs Premium (network-wide): max_listings >= 10 = every other city.
+    let satellite_ids: Vec<Uuid> = if max_listings >= 10 {
+        sqlx::query_scalar("SELECT id FROM directories WHERE id != $1 ORDER BY slug LIMIT $2")
+            .bind(home_dir_id)
+            .bind(cap)
+            .fetch_all(db)
+            .await?
+    } else {
+        sqlx::query_scalar(
+            "SELECT id FROM directories \
+              WHERE region = (SELECT region FROM directories WHERE id = $1) AND id != $1 \
+              ORDER BY slug LIMIT $2",
+        )
+        .bind(home_dir_id)
+        .bind(cap)
+        .fetch_all(db)
+        .await?
+    };
+
+    // Replace the set (idempotent).
+    sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
+        .bind(business_id)
+        .execute(db)
+        .await?;
+
+    for dir_id in satellite_ids {
+        sqlx::query(
+            "INSERT INTO business_placements (business_id, directory_id) VALUES ($1, $2) \
+             ON CONFLICT (business_id, directory_id) DO NOTHING",
+        )
+        .bind(business_id)
+        .bind(dir_id)
+        .execute(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+/// Visibility fragment for listing queries: business `b` has a SATELLITE placement in the viewed
+/// directory. `param` is the positional parameter NUMBER for the viewed directory id (never a
+/// value). Callers wrap it as `(b.directory_id = $1 OR <placement_visible("$1")>)` and sort locals
+/// first with `(b.directory_id = $1) DESC` so a satellite business never outranks a local one.
+pub fn placement_visible(param: &str) -> String {
+    format!(
+        " EXISTS (SELECT 1 FROM business_placements bp \
+          WHERE bp.business_id = b.id AND bp.directory_id = {p}) ",
+        p = param
+    )
+}

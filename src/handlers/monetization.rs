@@ -434,6 +434,9 @@ pub async fn create_subscription(
     .fetch_one(&s.db)
     .await?;
 
+    // Satellite cities: recompute this business's placements from its new subscription.
+    let _ = crate::entitlements::sync_placements(&s.db, business_id).await;
+
     Ok((StatusCode::CREATED, Json(json!(sub))))
 }
 
@@ -539,6 +542,9 @@ pub async fn update_subscription(
     .fetch_one(&s.db)
     .await?;
 
+    // Satellite cities: a tier/status change recomputes placements (a lapse clears them).
+    let _ = crate::entitlements::sync_placements(&s.db, business_id).await;
+
     Ok(Json(json!(sub)))
 }
 
@@ -547,13 +553,24 @@ pub async fn delete_subscription(
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let result = sqlx::query("DELETE FROM business_subscriptions WHERE id = \x241")
+    let business_id: Option<Uuid> =
+        sqlx::query_scalar(r#"SELECT business_id FROM business_subscriptions WHERE id = $1"#)
+            .bind(id)
+            .fetch_optional(&s.db)
+            .await?;
+
+    let result = sqlx::query(r#"DELETE FROM business_subscriptions WHERE id = $1"#)
         .bind(id)
         .execute(&s.db)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound("Subscription not found".to_string()));
+    }
+
+    // Satellite cities: deleting the subscription lapses it — clear the placements.
+    if let Some(business_id) = business_id {
+        let _ = crate::entitlements::sync_placements(&s.db, business_id).await;
     }
 
     Ok(Json(json!({"message": "Subscription deleted"})))
@@ -1296,6 +1313,9 @@ pub async fn upgrade_subscription(
         .await?;
     }
 
+    // Satellite cities: a plan change recomputes placements (Featured -> region, Premium -> all).
+    let _ = crate::entitlements::sync_placements(&s.db, req.business_id).await;
+
     Ok(Json(
         json!({"status": "upgraded", "plan": plan.0, "price": price.to_string(), "features": plan.3}),
     ))
@@ -1346,6 +1366,9 @@ pub async fn downgrade_subscription(
         .execute(&s.db)
         .await?;
 
+        // Satellite cities: a downgrade recomputes placements.
+        let _ = crate::entitlements::sync_placements(&s.db, req.business_id).await;
+
         Ok(Json(json!({"status": "downgraded", "plan": plan.0})))
     } else {
         sqlx::query(
@@ -1354,6 +1377,9 @@ pub async fn downgrade_subscription(
         .bind(req.business_id)
         .execute(&s.db)
         .await?;
+
+        // Satellite cities: cancelling lapses the subscription — clear the placements.
+        let _ = crate::entitlements::sync_placements(&s.db, req.business_id).await;
 
         Ok(Json(json!({"status": "cancelled"})))
     }

@@ -113,14 +113,24 @@ pub async fn list_businesses(
     // distributors, manufacturers, associations — all B2B, surfaced only in the back office)
     // and franchises/big chains (is_franchise = true). These are NOT part of the public
     // community directory.
-    const COUNT_HEAD: &str = "SELECT COUNT(*) FROM businesses b WHERE b.directory_id = ";
     const PUBLIC_FILTERS: &str = " AND COALESCE(b.business_type, 'local') = 'local' \
                                    AND COALESCE(b.is_franchise, false) = false \
                                    AND COALESCE(b.is_active, true) = true \
                                    AND COALESCE(b.status, 'active') NOT IN ('draft', 'prospect')";
 
-    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(COUNT_HEAD);
-    count_qb.push_bind(dir_id).push(PUBLIC_FILTERS);
+    // Satellite cities: a paid business has a placement row in this directory. `$1` = the viewed
+    // directory id, referenced from both the visibility clause and the locals-first sort.
+    let sat = crate::entitlements::placement_visible("$1");
+
+    let mut count_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+        "SELECT COUNT(*) FROM businesses b WHERE (b.directory_id = ",
+    );
+    count_qb
+        .push_bind(dir_id)
+        .push(" OR ")
+        .push(sat.as_str())
+        .push(")")
+        .push(PUBLIC_FILTERS);
 
     if let Some(ref q) = qs.q {
         if !q.is_empty() {
@@ -161,25 +171,30 @@ pub async fn list_businesses(
 
     let (total,): (i64,) = count_qb.build_query_as::<(i64,)>().fetch_one(&s.db).await?;
 
-    // Sort — reassigned businesses (local_priority = 0, moved in from another
-    // directory per work-queue line 41) always sink to the bottom; the hub's own
-    // listings sort first. The leading boolean key leaves every non-reassigned
-    // business in its existing secondary-sort order.
+    // Sort — locals first (a satellite business must never outrank a business whose home is this
+    // directory), then reassigned businesses (local_priority = 0, moved in from another directory
+    // per work-queue line 41) sink to the bottom, then the secondary key. The leading boolean keys
+    // leave every other business in its existing order.
     let order_by = match qs.sort.as_deref() {
         Some("rating") => {
-            "(COALESCE(b.local_priority, 3) = 0) ASC, b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST"
+            "(b.directory_id = $1) DESC, (COALESCE(b.local_priority, 3) = 0) ASC, b.rating DESC NULLS LAST, b.review_count DESC NULLS LAST"
         }
-        Some("newest") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.created_at DESC",
-        Some("oldest") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.created_at ASC",
-        Some("name") => "(COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
-        _ => "(COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
+        Some("newest") => "(b.directory_id = $1) DESC, (COALESCE(b.local_priority, 3) = 0) ASC, b.created_at DESC",
+        Some("oldest") => "(b.directory_id = $1) DESC, (COALESCE(b.local_priority, 3) = 0) ASC, b.created_at ASC",
+        Some("name") => "(b.directory_id = $1) DESC, (COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
+        _ => "(b.directory_id = $1) DESC, (COALESCE(b.local_priority, 3) = 0) ASC, b.name ASC",
     };
 
     // Data query — same compile-time head and the same predicate set as the count above.
     let mut data_qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
-        "SELECT b.* FROM businesses b WHERE b.directory_id = ",
+        "SELECT b.* FROM businesses b WHERE (b.directory_id = ",
     );
-    data_qb.push_bind(dir_id).push(PUBLIC_FILTERS);
+    data_qb
+        .push_bind(dir_id)
+        .push(" OR ")
+        .push(sat.as_str())
+        .push(")")
+        .push(PUBLIC_FILTERS);
 
     if let Some(ref q) = qs.q {
         if !q.is_empty() {

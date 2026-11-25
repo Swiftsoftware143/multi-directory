@@ -199,13 +199,29 @@ pub async fn search_businesses(
     data_qb.push(" LEFT JOIN directories d ON b.directory_id = d.id");
     push_search_where(&mut data_qb, &qs, has_subcat_filter, has_cat_filter, has_q);
     // The full-text ORDER BY needs one more bind of the same query text than the WHERE uses.
+    // Locals-first: a satellite business never outranks a business whose home is the searched
+    // directory — the directory id is bound once more here so the ORDER BY can reference it.
     if has_q {
+        data_qb.push(" ORDER BY ");
+        if qs.directory.is_some() {
+            data_qb
+                .push("(b.directory_id = ")
+                .push_bind(qs.directory)
+                .push(") DESC, ");
+        }
         data_qb
-            .push(" ORDER BY ts_rank(b.search_vector, plainto_tsquery('english', ")
+            .push("ts_rank(b.search_vector, plainto_tsquery('english', ")
             .push_bind(qs.q.as_deref())
             .push(")) DESC, b.name ASC");
     } else {
-        data_qb.push(" ORDER BY b.name ASC");
+        data_qb.push(" ORDER BY ");
+        if qs.directory.is_some() {
+            data_qb
+                .push("(b.directory_id = ")
+                .push_bind(qs.directory)
+                .push(") DESC, ");
+        }
+        data_qb.push("b.name ASC");
     }
     data_qb
         .push(" LIMIT ")
@@ -315,7 +331,17 @@ fn push_search_where<'a>(
             qb.push(" AND ");
         }
         first = false;
-        qb.push("b.directory_id = ").push_bind(qs.directory);
+        // Satellite cities: a paid business surfaces here via a business_placements row. The
+        // directory id is bound twice (home compare + placement EXISTS) because each push_bind
+        // mints its own positional parameter.
+        qb.push("(b.directory_id = ")
+            .push_bind(qs.directory)
+            .push(
+                " OR EXISTS (SELECT 1 FROM business_placements bp \
+                   WHERE bp.business_id = b.id AND bp.directory_id = ",
+            )
+            .push_bind(qs.directory)
+            .push("))");
     }
 
     if has_q {
