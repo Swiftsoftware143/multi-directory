@@ -1332,6 +1332,16 @@ async function buyPlan(plan, bid, cycle) {
     var r = await po('/subscriptions/upgrade', { business_id: bid, plan_id: plan.id, billing_cycle: cycle });
     return { ok: true, message: 'Plan changed to ' + (r.plan || name) + '.' };
   }
+  // The operator can paste an EMBEDDABLE checkout (iframe URL or embed code) on the tier. That
+  // renders INLINE here (smooth reveal) instead of bouncing the owner to a payment page in a new
+  // tab — the "checkout link that links out" is replaced by an embedded form.
+  if (plan.checkout_embed) {
+    return {
+      ok: true,
+      checkout_embed: plan.checkout_embed,
+      message: 'Complete your purchase of ' + name + ' ($' + money(price) + (cycle === 'yearly' ? '/yr' : '/mo') + ') below. Your plan switches on once the payment is confirmed.'
+    };
+  }
   // A tier can carry the operator's own hosted payment-page link (the NMI/EPD payment page, or any
   // external sales page). That IS a real way to buy the plan even before an API receiver exists:
   // send the business to the provider's page and let the gateway take the card. The console's
@@ -1369,7 +1379,9 @@ async function buyPlan(plan, bid, cycle) {
 }
 
 // Render a buyPlan result: into a note element when given, else as an alert.
+// An embeddable checkout opens INLINE (smooth modal) instead of a link-out.
 function renderPlanResult(noteId, res) {
+  if (res && res.checkout_embed) { openPlanCheckout(res.checkout_embed); return; }
   var el = noteId ? document.getElementById(noteId) : null;
   if (el) {
     el.style.color = res.ok ? '#16a34a' : '#dc2626';
@@ -1396,9 +1408,40 @@ async function showSubscribe(planIdx) {
                ' plan ($' + money(p.price_monthly) + '/mo)? You will be sent to checkout to pay.')) return;
   try {
     var res = await buyPlan(p, bid, 'monthly');
-    if (res.ok && !res.checkout_url) { alert(res.message); loadDashboard(); }
+    if (res.ok && res.checkout_embed) { openPlanCheckout(res.checkout_embed); }
+    else if (res.ok && !res.checkout_url) { alert(res.message); loadDashboard(); }
     else { alert(res.message); if (res.checkout_url) window.open(res.checkout_url, '_blank', 'noopener'); }
   } catch (e) { alert('Could not change plan: ' + e.message); }
+}
+
+// 💳 Plan checkout embed (work-queue "MONETIZATION CHECKOUT EMBED") — render the operator's
+// embeddable checkout inline (smooth modal) instead of a link-out. URL/iframe -> iframe src; any
+// other embed runs sandboxed so its script cannot touch this page or the owner's session.
+function openPlanCheckout(embed) {
+  var host = document.getElementById('planCheckoutHost');
+  var modal = document.getElementById('planCheckoutModal');
+  if (!host || !modal || !embed) return;
+  var cleaned = String(embed).trim();
+  var src = '';
+  var m = cleaned.match(/src=["']([^"']+)["']/i);
+  if (m) { src = m[1]; }
+  else if (/^https?:\/\//i.test(cleaned) || (cleaned.indexOf('.') > 0 && cleaned.indexOf(' ') < 0)) { src = cleaned; }
+  if (src) {
+    host.innerHTML = '<iframe src="' + esc(src) + '" title="Checkout" style="width:100%;min-height:520px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>';
+  } else {
+    var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0">' + cleaned + '</body></html>';
+    host.innerHTML = '<iframe sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox" srcdoc="' + esc(doc) + '" title="Checkout" style="width:100%;min-height:520px;border:1px solid var(--border);border-radius:8px;background:#fff"></iframe>';
+  }
+  modal.style.display = 'flex';
+  modal.style.opacity = '0';
+  modal.style.transition = 'opacity .3s ease';
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ modal.style.opacity = '1'; }); });
+}
+function closePlanCheckout() {
+  var modal = document.getElementById('planCheckoutModal');
+  if (modal) modal.style.display = 'none';
+  var host = document.getElementById('planCheckoutHost');
+  if (host) host.innerHTML = '';
 }
 
 // ════════════════════════════════════════════
@@ -3492,5 +3535,12 @@ function handleStripeReturn() {
 })();
 </script>
 <script src="/survey-widget.js" defer></script>
+<div id="planCheckoutModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closePlanCheckout()">
+  <div style="background:#fff;border-radius:12px;max-width:720px;width:100%;max-height:90vh;overflow:auto;padding:16px;position:relative">
+    <button onclick="closePlanCheckout()" style="position:absolute;top:8px;right:12px;border:none;background:none;font-size:1.4rem;cursor:pointer;line-height:1">×</button>
+    <h3 style="margin:0 0 12px">💳 Checkout</h3>
+    <div id="planCheckoutHost" style="width:100%"></div>
+  </div>
+</div>
 </body>
 </html>

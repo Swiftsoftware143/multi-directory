@@ -1084,6 +1084,7 @@ function showTierForm(tier){
     '<div class="form-row"><label>Yearly Price ($)</label><input type="number" step="0.01" id="tf-yearly" value="'+(t.price_yearly||'0')+'" style="width:120px"></div>'+
     '<div class="form-row"><label>Payment Provider</label><select id="tf-provider" style="width:220px"><option value="">Not set — use the active gateway</option>'+['stripe','paypal','nmi','epd','square','paddle'].map(function(p){var L={stripe:'Stripe',paypal:'PayPal',nmi:'NMI (no receiver yet)',epd:'EPD (no receiver yet)',square:'Square (no receiver yet)',paddle:'Paddle (no receiver yet)'};return '<option value="'+p+'"'+(t.payment_provider===p?' selected':'')+'>'+L[p]+'</option>';}).join('')+'</select></div>'+
     '<div class="form-row"><label>Payment page link</label><input type="text" id="tf-salespage" value="'+esc(t.plan_sales_page_url||'')+'" style="width:100%" placeholder="https://… the payment page from your provider"></div>'+
+    '<div class="form-row"><label>Checkout embed (iframe URL or embed code)</label><input type="text" id="tf-embed" value="'+esc(t.checkout_embed||'')+'" style="width:100%" placeholder="https://… or a pasted &lt;iframe&gt;/embed snippet — shows inline instead of linking out"></div>'+
     '<div class="form-row"><label>Thank-You URL</label><input type="text" id="tf-thankyou" value="'+esc(t.thank_you_url||'')+'" style="width:100%" placeholder="/thank-you.html"></div>'+
     '<div class="form-row"><label>Sort Order</label><input type="number" id="tf-order" value="'+(t.sort_order||0)+'" style="width:80px"></div>'+
     '<div class="form-row"><label><input type="checkbox" id="tf-active" '+(t.is_active!==false?'checked':'')+'> Active</label></div>'+
@@ -1106,6 +1107,7 @@ function saveTier(){
     price_yearly:parseFloat(document.getElementById('tf-yearly').value)||0,
     payment_provider:document.getElementById('tf-provider').value||null,
     plan_sales_page_url:(document.getElementById('tf-salespage').value||'').trim()||null,
+    checkout_embed:(document.getElementById('tf-embed').value||'').trim()||null,
     thank_you_url:document.getElementById('tf-thankyou').value||null,
     sort_order:parseInt(document.getElementById('tf-order').value)||0,
     is_active:document.getElementById('tf-active').checked

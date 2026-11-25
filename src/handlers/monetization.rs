@@ -37,6 +37,9 @@ pub struct PlanTier {
     pub featured_listing: Option<bool>,
     pub description: Option<String>,
     pub plan_sales_page_url: Option<String>,
+    /// Embeddable checkout (work-queue "MONETIZATION CHECKOUT EMBED"): iframe URL or embed snippet
+    /// rendered inline on the purchase screen instead of a link-out. NULL = none.
+    pub checkout_embed: Option<String>,
     pub payment_provider: Option<String>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -144,12 +147,12 @@ pub async fn create_tier(
         r#"INSERT INTO plan_tiers (name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url, payment_provider)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            featured_listing, description, plan_sales_page_url, payment_provider, checkout_embed)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
+            featured_listing, description, plan_sales_page_url, payment_provider, checkout_embed, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -170,6 +173,7 @@ pub async fn create_tier(
     .bind(body.get("description").and_then(|v| v.as_str()))
     .bind(body.get("plan_sales_page_url").and_then(|v| v.as_str()))
     .bind(body.get("payment_provider").and_then(|v| v.as_str()))
+    .bind(body.get("checkout_embed").and_then(|v| v.as_str()))
     .fetch_one(&s.db)
     .await?;
 
@@ -231,6 +235,15 @@ pub async fn update_tier(
         _ => existing.plan_sales_page_url.clone(),
     };
 
+    // Same rule for the embeddable checkout: an explicit null or empty string CLEARS it, omitting
+    // the field keeps it (the screen's "clear the box and save" must actually remove the embed).
+    let checkout_embed: Option<String> = match body.get("checkout_embed") {
+        Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(v)) if v.trim().is_empty() => None,
+        Some(serde_json::Value::String(v)) => Some(v.trim().to_string()),
+        _ => existing.checkout_embed.clone(),
+    };
+
     let tier = sqlx::query_as::<_, PlanTier>(
         r#"UPDATE plan_tiers SET
             name = $1, slug = $2,
@@ -242,12 +255,13 @@ pub async fn update_tier(
             featured_listing = $15, description = $16,
             plan_sales_page_url = $17,
             payment_provider = $18,
-            monthly_point_allowance = $19
-        WHERE id = $20
+            monthly_point_allowance = $19,
+            checkout_embed = $20
+        WHERE id = $21
         RETURNING id, name, slug, price_monthly, price_yearly, max_listings, max_deals, max_photos,
             monthly_point_allowance,
             has_reviews, has_analytics, has_crm, has_email, has_call_tracking, has_import_export, has_api_access,
-            featured_listing, description, plan_sales_page_url, payment_provider, created_at"#
+            featured_listing, description, plan_sales_page_url, payment_provider, checkout_embed, created_at"#
     )
     .bind(name)
     .bind(slug)
@@ -272,6 +286,7 @@ pub async fn update_tier(
     .bind(plan_sales_page_url.as_deref())
     .bind(payment_provider.as_deref())
     .bind(body.get("monthly_point_allowance").and_then(|v| v.as_i64()).map(|v| v as i32).or(existing.monthly_point_allowance))
+    .bind(checkout_embed.as_deref())
     .bind(id)
     .fetch_one(&s.db)
     .await?;
@@ -1140,8 +1155,8 @@ pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoRespons
     // The public plan list is what a business with no subscription sees, so it must carry the
     // operator's own payment-page link (plan_sales_page_url). Without it the screen could only
     // say "contact admin", even when the operator had pasted an NMI/EPD hosted payment page.
-    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>, Option<i32>, String, Option<String>, Option<String>)>(
-        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings, monthly_point_allowance, slug, plan_sales_page_url, payment_provider FROM plan_tiers ORDER BY price_monthly ASC "
+    let plans = sqlx::query_as::<_, (Uuid, String, rust_decimal::Decimal, rust_decimal::Decimal, Option<String>, Option<serde_json::Value>, Option<i32>, Option<i32>, String, Option<String>, Option<String>, Option<String>)>(
+        "SELECT id, name, price_monthly, price_yearly, description, feature_access, max_listings, monthly_point_allowance, slug, plan_sales_page_url, payment_provider, checkout_embed FROM plan_tiers ORDER BY price_monthly ASC "
     )
     .fetch_all(&s.db)
     .await?;
@@ -1153,7 +1168,8 @@ pub async fn list_plans(State(s): State<AppState>) -> ApiResult<impl IntoRespons
                 "id": p.0, "name": p.1, "price_monthly": p.2, "price_yearly": p.3,
                 "description": p.4, "features": p.5, "max_listings": p.6,
                 "monthly_point_allowance": p.7, "slug": p.8,
-                "plan_sales_page_url": p.9, "payment_provider": p.10
+                "plan_sales_page_url": p.9, "payment_provider": p.10,
+                "checkout_embed": p.11
             })
         })
         .collect();
