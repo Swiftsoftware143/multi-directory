@@ -1346,6 +1346,9 @@ function renderShell(){
 <div id="ad-footer" class="zh-ad-slot zh-ad-footer"></div>
 <div class="zh-footer">
   <div style="max-width:1280px;margin:0 auto 28px">
+    <a id="zh-newsletter-ad" href="#zh-newsletter" style="display:none;justify-content:center;margin-bottom:16px;text-decoration:none">
+      <img id="zh-newsletter-ad-img" alt="Local newsletter" style="max-width:300px;width:100%;height:auto;border-radius:12px;box-shadow:var(--shadow-sm)">
+    </a>
     <form id="zh-newsletter" class="zh-newsletter" onsubmit="return mdNewsletterSubmit(event,this)" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:14px 18px">
       <label for="zh-nl-email" style="font-weight:700;color:#e2e8f0">📧 Get local news &amp; deals by email</label>
       <input id="zh-nl-email" type="email" name="email" required placeholder="you@example.com" style="flex:1 1 220px;min-width:180px;padding:9px 12px;border:1px solid #334155;border-radius:8px;font-size:14px;background:#fff;color:#111827">
@@ -2116,9 +2119,22 @@ async function loadBlogPage(){
 }
 
 // ── City Page ──
+// Per-city newsletter advert in the footer. One image per city under
+// /assets/newsletter/<slug>.jpg (+ @2x). Homepage (no city) hides it.
+function setNewsletterAd(slug){
+  var a=document.getElementById('zh-newsletter-ad');
+  var img=document.getElementById('zh-newsletter-ad-img');
+  if(!a||!img)return;
+  if(!slug){a.style.display='none';return;}
+  var base='/assets/newsletter/'+slug;
+  img.src=base+'.jpg';
+  img.srcset=base+'.jpg 1x, '+base+'@2x.jpg 2x';
+  a.style.display='flex';
+}
 async function loadCityPage(){
   var slug=state.slug
   if(!slug){renderError('No city selected');return}
+  setNewsletterAd(slug)
   try{
     var d=await g('/zaarhub/cities/'+slug)
     // Card B90 local feed: city-scoped multi-source activity (fail-silent).
