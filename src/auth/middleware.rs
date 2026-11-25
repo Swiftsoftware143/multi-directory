@@ -502,6 +502,13 @@ pub struct ApiKeyIdentity {
     pub rate_limit_per_minute: i32,
 }
 
+/// Marker injected by `auth_guard` when the request authenticated with an API key (`md_…`) rather
+/// than a console session. `auth_guard` swaps the key for a short-lived JWT before the handler
+/// runs, so a handler that must be SESSION-ONLY (reveal: a read-only key may never read back a
+/// read+write key) reads this extension instead of the rewritten Authorization header.
+#[derive(Clone, Copy, Debug)]
+pub struct ViaApiKey;
+
 /// Resolve a raw API key — the `md_…` value shown once on the admin "API Access" screen — to the
 /// session of the user who owns it, so an issued key can actually call the API it was created for.
 ///

@@ -1534,8 +1534,8 @@ async function loadHomepage(){
   var firstCity=d.cities&&d.cities.length?d.cities[0]:null;
   if(firstCity&&firstCity.id){
     setTimeout(function(){loadAdsForDirectory(firstCity.id, [
-      {zoneKey:'hero',containerId:'ad-hero'},
-      {zoneKey:'footer',containerId:'ad-footer'}
+      {zoneKey:'header_banner',containerId:'ad-hero'},
+      {zoneKey:'footer_banner',containerId:'ad-footer'}
     ])}, 200);
   }
   setTimeout(loadTicker, 500)
@@ -2126,8 +2126,8 @@ async function loadCityPage(){
     // Load ads for this city
     if(dirId){
       setTimeout(function(){loadAdsForDirectory(dirId, [
-        {zoneKey:'sidebar',containerId:'ad-sidebar'},
-        {zoneKey:'footer',containerId:'ad-footer'}
+        {zoneKey:'sidebar_top',containerId:'ad-sidebar'},
+        {zoneKey:'footer_banner',containerId:'ad-footer'}
       ])}, 200);
     }
     // Load ticker for this city

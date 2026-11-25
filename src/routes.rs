@@ -3926,6 +3926,11 @@ async fn auth_guard(
                 .map_err(|_| AppError::Unauthorized)?,
         );
         req.extensions_mut().insert(ident.claims.clone());
+        // Mark this request as authenticated via API key (not a console session), so a
+        // SESSION-ONLY handler (reveal) can refuse a read-only key 403 even though the header
+        // was just rewritten to a JWT.
+        req.extensions_mut()
+            .insert(crate::auth::middleware::ViaApiKey);
 
         let method = req.method().to_string();
         let resp = next.run(req).await;

@@ -16,7 +16,7 @@
 //! action, the regenerate action and the one-time backfill can never disagree about the shape.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Extension, Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
@@ -447,18 +447,6 @@ async fn directory_exists(state: &AppState, directory_id: Uuid) -> Result<bool, 
     Ok(exists)
 }
 
-/// Does the bearer look like one of this app's keys? `md_…` is the key SHAPE, checked before any
-/// database read or Argon2 — the reveal route must tell a key apart from a session before any
-/// credential material moves, because a read-only key may never read back a read+write key.
-fn presented_api_key(headers: &HeaderMap) -> bool {
-    headers
-        .get("Authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|t| t.starts_with("md_"))
-        .unwrap_or(false)
-}
-
 /// GET /api/v1/directories/:id/api-keys — the keys this directory holds (prefix only, never the
 /// secret). One active key per directory is the norm; revoked keys stay for audit.
 pub async fn list_directory_keys(
@@ -641,9 +629,10 @@ pub async fn revoke_directory_key(
 pub async fn reveal_directory_key(
     State(state): State<AppState>,
     headers: HeaderMap,
+    via_key: Option<Extension<crate::auth::middleware::ViaApiKey>>,
     Path((directory_id, id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<impl IntoResponse> {
-    if presented_api_key(&headers) {
+    if via_key.is_some() {
         return Err(AppError::Forbidden(
             "This needs a console session. An API key cannot view keys — sign in and press View."
                 .to_string(),
