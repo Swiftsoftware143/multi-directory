@@ -476,3 +476,165 @@ text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;\">Back
         "email_sent": email_sent,
     })))
 }
+
+// ── Satellite cities: manual placement management (work-queue t_5306e167) ────────────────────
+// An employee points/verifies a paid business's non-home appearances here. `satellite` rows are
+// capped by entitlements::satellite_cap_for (the "no extra listing" gate); `secondary_office`
+// rows are real branches, added manually and never auto-deleted by sync_placements (so a business
+// with a genuine second office is never cheated out of its listing).
+
+#[derive(Debug, Deserialize)]
+pub struct AddPlacementBody {
+    pub directory_id: Uuid,
+    /// 'satellite' (default, capped by max_listings) or 'secondary_office' (real branch, uncapped).
+    pub placement_type: Option<String>,
+}
+
+/// GET /admin/businesses/:business_id/placements — current placements + the entitlement budget.
+pub async fn list_placements(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+) -> ApiResult<impl IntoResponse> {
+    let home: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT b.directory_id, d.slug FROM businesses b \
+           JOIN directories d ON d.id = b.directory_id WHERE b.id = $1",
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?;
+    let Some((home_dir_id, home_slug)) = home else {
+        return Err(AppError::NotFound("Business not found".to_string()));
+    };
+
+    let plan_name: Option<String> = sqlx::query_scalar(
+        "SELECT pt.name FROM business_subscriptions bs \
+           JOIN plan_tiers pt ON pt.id = bs.tier_id \
+          WHERE bs.business_id = $1 AND bs.status = 'active' \
+            AND (bs.end_date IS NULL OR bs.end_date >= CURRENT_DATE) \
+          ORDER BY bs.created_at DESC LIMIT 1",
+    )
+    .bind(business_id)
+    .fetch_optional(&s.db)
+    .await?;
+
+    let cap = crate::entitlements::satellite_cap_for(&s.db, business_id).await?;
+    let satellite_used: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM business_placements \
+          WHERE business_id = $1 AND placement_type = 'satellite'",
+    )
+    .bind(business_id)
+    .fetch_one(&s.db)
+    .await?;
+
+    let rows = sqlx::query(
+        "SELECT bp.directory_id, d.slug, d.name, bp.placement_type \
+           FROM business_placements bp JOIN directories d ON d.id = bp.directory_id \
+          WHERE bp.business_id = $1 ORDER BY bp.placement_type, d.slug",
+    )
+    .bind(business_id)
+    .fetch_all(&s.db)
+    .await?;
+
+    Ok(Json(json!({
+        "business_id": business_id,
+        "home_directory_id": home_dir_id,
+        "home_slug": home_slug,
+        "plan": plan_name,
+        "satellite_cap": cap,
+        "satellite_used": satellite_used,
+        "placements": rows.iter().map(|r| json!({
+            "directory_id": r.try_get::<Uuid, _>("directory_id").ok(),
+            "slug": r.try_get::<String, _>("slug").ok(),
+            "name": r.try_get::<String, _>("name").ok(),
+            "placement_type": r.try_get::<String, _>("placement_type").ok(),
+        })).collect::<Vec<_>>(),
+    })))
+}
+
+/// POST /admin/businesses/:business_id/placements — add a manual placement, gated by the plan cap.
+pub async fn add_placement(
+    State(s): State<AppState>,
+    Path(business_id): Path<Uuid>,
+    Json(body): Json<AddPlacementBody>,
+) -> ApiResult<impl IntoResponse> {
+    let ptype = body.placement_type.as_deref().unwrap_or("satellite");
+    if ptype != "satellite" && ptype != "secondary_office" {
+        return Err(AppError::Validation(
+            "placement_type must be 'satellite' or 'secondary_office'".to_string(),
+        ));
+    }
+
+    let dir_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM directories WHERE id = $1)")
+            .bind(body.directory_id)
+            .fetch_one(&s.db)
+            .await?;
+    if !dir_exists {
+        return Err(AppError::NotFound("Directory not found".to_string()));
+    }
+    let home_dir: Option<Uuid> =
+        sqlx::query_scalar("SELECT directory_id FROM businesses WHERE id = $1")
+            .bind(business_id)
+            .fetch_optional(&s.db)
+            .await?;
+    if home_dir.is_none() {
+        return Err(AppError::NotFound("Business not found".to_string()));
+    }
+
+    // "No extra listing" gate: a SATELLITE placement must not exceed the plan's budget. Secondary
+    // offices are real branches and are gated instead by the employee verifying them.
+    if ptype == "satellite" {
+        let cap = crate::entitlements::satellite_cap_for(&s.db, business_id).await?;
+        let used: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM business_placements \
+              WHERE business_id = $1 AND placement_type = 'satellite' AND directory_id != $2",
+        )
+        .bind(business_id)
+        .bind(body.directory_id)
+        .fetch_one(&s.db)
+        .await?;
+        if used >= cap {
+            return Err(AppError::Validation(format!(
+                "Satellite cap reached: this plan allows {cap} satellite cities. Remove one first, \
+                 or set placement_type to 'secondary_office' if it is a real branch."
+            )));
+        }
+    }
+
+    sqlx::query(
+        "INSERT INTO business_placements (business_id, directory_id, placement_type) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (business_id, directory_id) DO UPDATE SET placement_type = EXCLUDED.placement_type",
+    )
+    .bind(business_id)
+    .bind(body.directory_id)
+    .bind(ptype)
+    .execute(&s.db)
+    .await?;
+
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(json!({
+            "business_id": business_id,
+            "directory_id": body.directory_id,
+            "placement_type": ptype,
+        })),
+    ))
+}
+
+/// DELETE /admin/businesses/:business_id/placements/:directory_id — remove a placement.
+pub async fn remove_placement(
+    State(s): State<AppState>,
+    Path((business_id, directory_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<impl IntoResponse> {
+    let result =
+        sqlx::query("DELETE FROM business_placements WHERE business_id = $1 AND directory_id = $2")
+            .bind(business_id)
+            .bind(directory_id)
+            .execute(&s.db)
+            .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Placement not found".to_string()));
+    }
+    Ok(Json(json!({"removed": true})))
+}

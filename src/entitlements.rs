@@ -296,7 +296,7 @@ pub async fn sync_placements(db: &PgPool, business_id: Uuid) -> Result<(), sqlx:
     .await?;
 
     let Some(home_dir_id) = home_dir_id else {
-        sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
+        sqlx::query("DELETE FROM business_placements WHERE business_id = $1 AND placement_type = 'satellite'")
             .bind(business_id)
             .execute(db)
             .await?;
@@ -319,7 +319,7 @@ pub async fn sync_placements(db: &PgPool, business_id: Uuid) -> Result<(), sqlx:
     // Satellite cap = max_listings - 1 (home city is the 1). 0 or less = no satellites.
     let cap = (max_listings - 1).max(0) as i64;
     if cap == 0 {
-        sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
+        sqlx::query("DELETE FROM business_placements WHERE business_id = $1 AND placement_type = 'satellite'")
             .bind(business_id)
             .execute(db)
             .await?;
@@ -346,14 +346,16 @@ pub async fn sync_placements(db: &PgPool, business_id: Uuid) -> Result<(), sqlx:
     };
 
     // Replace the set (idempotent).
-    sqlx::query("DELETE FROM business_placements WHERE business_id = $1")
-        .bind(business_id)
-        .execute(db)
-        .await?;
+    sqlx::query(
+        "DELETE FROM business_placements WHERE business_id = $1 AND placement_type = 'satellite'",
+    )
+    .bind(business_id)
+    .execute(db)
+    .await?;
 
     for dir_id in satellite_ids {
         sqlx::query(
-            "INSERT INTO business_placements (business_id, directory_id) VALUES ($1, $2) \
+            "INSERT INTO business_placements (business_id, directory_id, placement_type) VALUES ($1, $2, 'satellite') \
              ON CONFLICT (business_id, directory_id) DO NOTHING",
         )
         .bind(business_id)
@@ -375,4 +377,23 @@ pub fn placement_visible(param: &str) -> String {
           WHERE bp.business_id = b.id AND bp.directory_id = {p}) ",
         p = param
     )
+}
+
+/// The maximum number of SATELLITE placements a business is allowed (`max_listings - 1`, the home
+/// city being the +1). This is the "no extra listing" gate: both `sync_placements` and the manual
+/// admin placement endpoint must not let a business exceed it. `secondary_office` placements are
+/// real branches and do NOT consume this budget (they are capped instead by manual verification).
+pub async fn satellite_cap_for(db: &PgPool, business_id: Uuid) -> Result<i64, sqlx::Error> {
+    let max_listings: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(pt.max_listings, 1) FROM business_subscriptions bs \
+           JOIN plan_tiers pt ON pt.id = bs.tier_id \
+          WHERE bs.business_id = $1 AND bs.status = 'active' \
+            AND (bs.end_date IS NULL OR bs.end_date >= CURRENT_DATE) \
+          ORDER BY bs.created_at DESC LIMIT 1",
+    )
+    .bind(business_id)
+    .fetch_optional(db)
+    .await?
+    .unwrap_or(1);
+    Ok((max_listings - 1).max(0) as i64)
 }

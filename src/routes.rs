@@ -425,6 +425,19 @@ pub fn create_router(s: AppState) -> Router {
             post(listing_invite::create_listing_invite)
                 .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
         )
+        // ── Satellite cities: manual placement management (t_5306e167) ───────────────────
+        // An employee points/verifies a paid business's satellite + secondary-office appearances.
+        .route(
+            "/admin/businesses/:id/placements",
+            get(admin_businesses::list_placements)
+                .post(admin_businesses::add_placement)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
+        .route(
+            "/admin/businesses/:id/placements/:directory_id",
+            delete(admin_businesses::remove_placement)
+                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+        )
         // ── Supplier PROSPECTING (card B80): internal-only sourcing surface ─────────────
         // Search the free/open enrichment source for candidate suppliers, save a candidate as
         // an internal prospect (a `businesses` row with status='prospect' — hidden from public),
