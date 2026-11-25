@@ -1,17 +1,18 @@
 -- 217_mcp_reader_newsletter_write.sql
 --
--- The fleet MCP (:8099) now exposes WRITE tools for the newsletter config
--- (multi_directory_newsletter_set_registration / upload_image), so the CEO can manage per-city
--- newsletter links and adverts without a code change. The write is scoped to the caller's
--- directories by the MCP server itself; this migration only grants the narrow DB permission the
--- `mcp_reader` role needs to carry it out:
+-- SUPERSEDED — this file is now a deliberate no-op (see 218_revoke_mcp_reader_write.sql).
 --
---   * UPDATE on the single `newsletter_registration_url` column (column-level, least privilege —
---     `mcp_reader` still cannot change any other column of `directories`); and
---   * INSERT on `directory_events`, because the `directories` UPDATE trigger
---     (`trg_auto_record_event`) records an audit row on every change.
+-- It originally granted the `mcp_reader` role column-level UPDATE on
+-- `directories.newsletter_registration_url` and INSERT on `directory_events`, so the fleet MCP's
+-- two Multi-Directory newsletter write tools
+-- (`multi_directory_newsletter_set_registration`, `multi_directory_newsletter_upload_image`)
+-- could write. Those tools were DELETED from the fleet MCP (fleet-mcp commit 6ead3bc), so the
+-- grants became dead privilege and violated the fleet invariant that `mcp_reader` is SELECT-only
+-- ("no DB-direct write, ever").
 --
--- `mcp_reader` remains otherwise SELECT-only. Grant is idempotent.
-
-GRANT UPDATE (newsletter_registration_url) ON directories TO mcp_reader;
-GRANT INSERT ON directory_events TO mcp_reader;
+-- This file is kept (not deleted) so the `_migrations` ledger on live — which recorded this
+-- filename as applied at 2026-11-25 19:24:12Z — keeps a matching, harmless entry. Its grant
+-- statements are removed so a FRESH database never grants write to `mcp_reader`; 218 revokes the
+-- grants on live.
+--
+-- (No statements follow — this file applies nothing.)
