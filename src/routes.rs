@@ -1766,8 +1766,10 @@ pub fn create_router(s: AppState) -> Router {
         )
         .route(
             "/directories/:id/api-keys/:key_id/reveal",
-            post(api_key_auto::reveal_directory_key)
-                .route_layer(middleware::from_fn_with_state(s.clone(), operator_guard)),
+            // SESSION-ONLY (no `operator_guard` here): the handler classifies the bearer itself —
+            // an API key is refused 403 (a read-only key must never read back a read+write key),
+            // a missing credential is 401, and only a live operator session reaches the reveal.
+            post(api_key_auto::reveal_directory_key),
         )
         // ??? Phase 4: Webhook management
         .route(

@@ -447,6 +447,18 @@ async fn directory_exists(state: &AppState, directory_id: Uuid) -> Result<bool, 
     Ok(exists)
 }
 
+/// Does the bearer look like one of this app's keys? `md_…` is the key SHAPE, checked before any
+/// database read or Argon2 — the reveal route must tell a key apart from a session before any
+/// credential material moves, because a read-only key may never read back a read+write key.
+fn presented_api_key(headers: &HeaderMap) -> bool {
+    headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|t| t.starts_with("md_"))
+        .unwrap_or(false)
+}
+
 /// GET /api/v1/directories/:id/api-keys — the keys this directory holds (prefix only, never the
 /// secret). One active key per directory is the norm; revoked keys stay for audit.
 pub async fn list_directory_keys(
@@ -619,15 +631,24 @@ pub async fn revoke_directory_key(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /api/v1/directories/:id/api-keys/:key_id/reveal — show the full key again. Re-authenticates
-/// the operator's own password first (a stolen session token must not be enough to read a live
-/// credential), then decrypts the sealed copy and writes an `api_key_reveals` audit row.
+/// POST /api/v1/directories/:id/api-keys/:key_id/reveal — show the full key again (repeatable).
+///
+/// David's ruling (plan §6.2, docs/fleet-per-account-keys-and-mcp-2026-11-25.md): **View is ONE
+/// CLICK** — a valid console session is enough, no password re-prompt (the key is masked on load
+/// and every reveal is audited). SESSION ONLY: the bearer is classified by SHAPE, cheaply (no
+/// Argon2), and an API key is refused 403 — a read-only key must never obtain a directory's
+/// read+write key. Missing credential → 401; foreign or revoked id → 404.
 pub async fn reveal_directory_key(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((directory_id, id)): Path<(Uuid, Uuid)>,
-    Json(req): Json<RevealRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    if presented_api_key(&headers) {
+        return Err(AppError::Forbidden(
+            "This needs a console session. An API key cannot view keys — sign in and press View."
+                .to_string(),
+        ));
+    }
     let (_claims, user_id) = operator_user(&headers, &state)?;
     if !directory_exists(&state, directory_id).await? {
         return Err(AppError::NotFound("Directory not found".to_string()));
@@ -643,17 +664,6 @@ pub async fn reveal_directory_key(
     .ok_or_else(|| AppError::NotFound("API key not found".to_string()))?;
     let prefix: String = row.get("key_prefix");
     let sealed: Option<String> = row.get("key_encrypted");
-
-    // ── re-authenticate the operator ────────────────────────────────────────────────────────────
-    let stored: Option<String> =
-        sqlx::query_scalar("SELECT password_hash FROM users WHERE id = $1 AND is_active = true")
-            .bind(user_id)
-            .fetch_optional(&state.db)
-            .await?;
-    let stored = stored.ok_or(AppError::Unauthorized)?;
-    if !crate::security::password_check::matches(&stored, &req.password) {
-        return Err(AppError::InvalidCredentials);
-    }
 
     let sealed = sealed.ok_or_else(|| {
         AppError::Conflict(

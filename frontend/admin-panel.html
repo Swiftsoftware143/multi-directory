@@ -11618,9 +11618,8 @@
     };
     window.__dkReveal = function (el) {
       var dirId = dkDirId(); var id = el.getAttribute('data-dkid'); if (!dirId || !id) return;
-      var pw = window.prompt('Enter YOUR account password to show this key. Every view is recorded.');
-      if (!pw) return;
-      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', { password: pw }).then(function (d) {
+      // View is ONE CLICK (plan §6.2): a valid operator session is enough, no password re-prompt.
+      apiPost('/directories/' + dirId + '/api-keys/' + id + '/reveal', {}).then(function (d) {
         var out = document.getElementById('dk-new'); out.style.display = 'block';
         out.innerHTML = '<b>Directory key ' + akEsc(d.prefix) + '…</b>'
           + '<div style="margin-top:6px;display:flex;gap:8px;align-items:center">'
