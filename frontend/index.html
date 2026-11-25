@@ -107,6 +107,16 @@ a:hover{text-decoration:underline}
 .zh-ad-card:hover{box-shadow:var(--shadow)}
 .zh-ad-card a{display:block;width:100%}
 .zh-ad-card .sponsor-name{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+.zh-ad-slot.ad-empty{display:block}
+.zh-ad-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed var(--border);border-radius:var(--radius);padding:20px 14px;text-align:center;background:var(--card);color:var(--text-muted)}
+.zh-ad-ph .ph-title{font-weight:700;font-size:.92rem;color:var(--text)}
+.zh-ad-ph .ph-sub{font-size:.74rem;line-height:1.4}
+.zh-ad-ph .ph-cta{display:inline-block;margin-top:8px;font-size:.74rem;font-weight:600;color:#fff;background:var(--primary);text-decoration:none;border-radius:100px;padding:6px 16px}
+.zh-ad-ph-news{background:linear-gradient(135deg,#0f172a,#1a3a6b);border:1px solid #1e293b;color:#cbd5e1}
+.zh-ad-ph-news .ph-title{color:#fff}
+.zh-ad-ph-news .ph-sub{color:#94a3b8}
+.zh-ad-ph-news .ph-cta{background:var(--warm);color:#fff}
+
 
 /* ── Fix mobile touch targets min 44px ── */
 .zh-hero-cat,.zh-filter-pill,.zh-biz-actions .action,.zh-event-card .rsvp,.zh-city-card,.zh-deal-card{cursor:pointer;min-height:44px;display:inline-flex;align-items:center}
@@ -1340,7 +1350,7 @@ function renderShell(){
 <div id="ad-footer" class="zh-ad-slot zh-ad-footer"></div>
 <div class="zh-footer">
   <div style="max-width:1280px;margin:0 auto 28px">
-    <form class="zh-newsletter" onsubmit="return mdNewsletterSubmit(event,this)" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:14px 18px">
+    <form id="zh-newsletter" class="zh-newsletter" onsubmit="return mdNewsletterSubmit(event,this)" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:14px 18px">
       <label for="zh-nl-email" style="font-weight:700;color:#e2e8f0">📧 Get local news &amp; deals by email</label>
       <input id="zh-nl-email" type="email" name="email" required placeholder="you@example.com" style="flex:1 1 220px;min-width:180px;padding:9px 12px;border:1px solid #334155;border-radius:8px;font-size:14px;background:#fff;color:#111827">
       <button type="submit" style="background:var(--primary,#4f46e5);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer">Subscribe</button>
@@ -2126,7 +2136,7 @@ async function loadCityPage(){
     // Load ads for this city
     if(dirId){
       setTimeout(function(){loadAdsForDirectory(dirId, [
-        {zoneKey:'sidebar_top',containerId:'ad-sidebar'},
+        {zoneKey:'sidebar_top',containerId:'ad-sidebar',ph:'newsletter'},
         {zoneKey:'footer_banner',containerId:'ad-footer'}
       ])}, 200);
     }
@@ -3724,16 +3734,30 @@ async function fetchActiveAds(dirId){
 }
 
 // Render a single ad slot at the given container
-function renderAdSlot(zoneKey, containerId, ads){
+function renderAdSlot(zoneKey, containerId, ads, ph){
   var container=document.getElementById(containerId);
   if(!container)return;
   var group=ads[zoneKey];
   if(!group||!group.length){
     container.classList.remove('active');
-    container.style.display='none';
-    container.innerHTML='';
+    container.classList.add('ad-empty');
+    container.style.display='';
+    if(ph==='newsletter'){
+      container.innerHTML='<div class="zh-ad-ph zh-ad-ph-news">'+
+        '<div class="ph-title">📬 Local Newsletter</div>'+
+        '<div class="ph-sub">Get weekly deals, events &amp; news — free.</div>'+
+        '<a class="ph-cta" href="#zh-newsletter">Subscribe →</a>'+
+        '</div>';
+    }else{
+      container.innerHTML='<div class="zh-ad-ph">'+
+        '<div class="ph-title">📢 Your Ad Here</div>'+
+        '<div class="ph-sub">Reach local customers with a banner here.</div>'+
+        '<a class="ph-cta" href="/portal">Advertise with us →</a>'+
+        '</div>';
+    }
     return;
   }
+  container.classList.remove('ad-empty');
   var ad=group[0]; // Pick first ad for the zone
   var w=ad.width||728;
   var h=ad.height||90;
@@ -4096,7 +4120,7 @@ async function loadAdsForDirectory(dirId, zones){
   var hasAny=false;
   for(var i=0;i<zones.length;i++){
     var z=zones[i];
-    renderAdSlot(z.zoneKey, z.containerId, ads);
+    renderAdSlot(z.zoneKey, z.containerId, ads, z.ph);
     if(ads[z.zoneKey]&&ads[z.zoneKey].length)hasAny=true;
   }
   return hasAny;
