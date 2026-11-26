@@ -468,6 +468,12 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
   .zh-search-bar{max-width:200px}
 }
 
+/* Collapse the city sidebar below 1000px so the main column keeps room for the listing cards */
+@media(max-width:1000px){
+  .zh-city-content{grid-template-columns:1fr}
+  .zh-city-side{position:static;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+}
+
 /* ── City Page Biz Cards ── */
 .zh-biz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
 .zh-biz-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:all .2s}
