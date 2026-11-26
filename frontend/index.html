@@ -438,7 +438,10 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
 .zh-filter-pill{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:100px;color:#e2e8f0;font-size:.8rem;cursor:pointer;transition:all .2s}
 .zh-filter-pill:hover,.zh-filter-pill.active{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.3);color:#fff}
 .zh-filter-pill.active{background:var(--primary);border-color:var(--primary);color:#fff}
-.zh-city-content{max-width:1280px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr;gap:24px}
+.zh-city-content{max-width:1280px;margin:0 auto;padding:24px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
+.zh-city-main{min-width:0}
+.zh-city-side{position:sticky;top:88px;display:flex;flex-direction:column;gap:16px}
+.zh-city-side .zh-ad-slot{margin:0}
 
 /* ── Search Results ── */
 .zh-search-hero{padding:40px 24px;background:linear-gradient(135deg,#2b3255 0%,#116dc0 50%,#f27f2f 100%)}
@@ -458,6 +461,8 @@ a.zh-city-card{display:block;text-decoration:none;color:inherit}
   .zh-hero-stat .num{font-size:1.2rem}
   .zh-section{padding:32px 16px}
   .zh-city-grid{grid-template-columns:1fr}
+  .zh-city-content{grid-template-columns:1fr}
+  .zh-city-side{position:static}
   .zh-deal-card{flex:0 0 260px}
   .zh-city-select select{min-width:120px;font-size:.8rem}
   .zh-search-bar{max-width:200px}
@@ -1342,7 +1347,6 @@ function renderShell(){
 </div>
 <!-- &#128176; Ad Slots -->
 <div id="ad-hero" class="zh-ad-slot zh-ad-hero"></div>
-<div id="ad-sidebar" class="zh-ad-slot zh-ad-sidebar"></div>
 <div id="ad-footer" class="zh-ad-slot zh-ad-footer"></div>
 <div class="zh-footer">
   <div style="max-width:1280px;margin:0 auto 28px">
@@ -2542,6 +2546,7 @@ function renderCityPage(d){
 </div>
 ${loyaltySectionHtml()}
 <div class="zh-city-content" id="zh-city-content">
+  <div class="zh-city-main">
   ${guaranteeHtml}
   ${costGuidesHtml}
   ${noticesHtml}
@@ -2575,6 +2580,10 @@ ${loyaltySectionHtml()}
     <p>This community is growing. Claim your business listing today!</p>
     <a href="/submit-business.html" class="zh-btn-primary">+ Add Your Business</a>
   </div>`:''}
+  </div>
+  <aside class="zh-city-side" id="zh-city-side">
+    <div id="ad-sidebar" class="zh-ad-slot zh-ad-sidebar"></div>
+  </aside>
 </div>
 ${ctaHtml}`
 
