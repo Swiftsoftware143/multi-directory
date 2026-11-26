@@ -14910,6 +14910,24 @@
     // /zaarhub/admin/legal (GET|POST), /zaarhub/admin/legal/:slug (GET|DELETE) and
     // /zaarhub/admin/config (GET|PATCH) all had a live backend and no caller. The public
     // /legal/:slug pages render from zaarhub_legal_pages, so an operator must edit them here.
+    //
+    // This IIFE has its own `fetchJson` helper but NOT the main panel's `apiGet`/`apiPost`/
+    // `apiFetch`/`showToast` (those live inside the dashboard IIFE), so calling them here
+    // threw "ReferenceError: apiGet is not defined" and left these controls dead. Alias them
+    // onto the local `fetchJson` + the shared #toast element.
+    function apiGet(path) { return fetchJson('GET', path); }
+    function apiPost(path, body) { return fetchJson('POST', path, body); }
+    function apiFetch(method, path, body) { return fetchJson(method, path, body); }
+    var lpToastTimer;
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      var m = document.getElementById('toast-msg');
+      if (!t || !m) return;
+      m.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(lpToastTimer);
+      lpToastTimer = setTimeout(function () { t.classList.remove('show'); }, 3000);
+    }
     function lpStatus(msg, ok) {
       var el = document.getElementById('lp-status');
       if (!el) return;
